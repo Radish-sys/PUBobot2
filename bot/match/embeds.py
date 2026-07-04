@@ -79,6 +79,13 @@ class Embeds:
 			)
 		)
 
+		if len(self.m.maps):
+			embed.add_field(
+				name=self.m.qc.gt("Map" if len(self.m.maps) == 1 else "Maps"),
+				value="\n".join((f"**{i}**" for i in self.m.maps)),
+				inline=False
+			)
+
 		teams_names = [
 			f"{t.emoji} \u200b **{t.name}**" +
 			(f" \u200b `〈{sum((self.m.ratings[p.id] for p in t))//(len(t) or 1)}〉`" if self.m.ranked else "")
