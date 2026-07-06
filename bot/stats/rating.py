@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import math
 import glicko2
 import trueskill
 import time
@@ -56,6 +57,11 @@ class BaseRating:
 			p['streak'] = 1 if p['streak'] <= 0 else p['streak'] + 1
 			if self.ws_boost and p['streak'] > 2:
 				r_change = r_change * (min(p['streak'], 6) / 2)
+
+		# SPL: clamp win/loss rating changes to 10-25 for calibrated players
+		# (maisan's standardized elo proposal; deviation > 130 = still in placements)
+		if score != 0 and p['deviation'] <= 130 and r_change != 0:
+			r_change = math.copysign(min(max(abs(r_change), 10), 25), r_change)
 
 		p['rating'] = max(0, round(p['rating'] + r_change))
 		p['deviation'] = max(self.min_deviation, round(p['deviation'] + d_change))
