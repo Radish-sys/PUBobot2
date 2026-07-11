@@ -268,6 +268,10 @@ class Match:
 		return self.queue.qc.rating_rank(self.ratings[member.id])['rank']
 
 	async def start_waiting_report(self, ctx):
+		# SPL fork: auto-travel the game server to the voted map (fire-and-forget)
+		from bot import spl_travel
+		spl_travel.travel_for_match(self)
+
 		# remove never picked players from the match
 		if len(self.teams[2]):
 			for p in self.teams[2]:
