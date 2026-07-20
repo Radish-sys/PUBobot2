@@ -1,0 +1,8 @@
+__pycache__/
+venv/
+logs/
+config.cfg
+saved_state.json
+spl-*-config.json
+locales/compiled/
+main
