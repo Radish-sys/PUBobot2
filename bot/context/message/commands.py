@@ -208,6 +208,16 @@ async def _rank(ctx: MessageContext, args: str = None):
 	await bot.commands.rank(ctx, player=member)
 
 
+@message_command('linksteam')
+async def _linksteam(ctx: MessageContext, args: str = None):
+	await bot.commands.linksteam(ctx, args=args)
+
+
+@message_command('kd')
+async def _kd(ctx: MessageContext, args: str = None):
+	await bot.commands.kd(ctx)
+
+
 @message_command('leaderboard', 'lb')
 async def _leaderboard(ctx: MessageContext, args: str = None):
 	page = int(args) if args else None

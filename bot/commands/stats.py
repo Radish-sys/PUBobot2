@@ -1,4 +1,4 @@
-__all__ = ['last_game', 'stats', 'top', 'rank', 'leaderboard']
+__all__ = ['last_game', 'stats', 'top', 'rank', 'leaderboard', 'linksteam', 'kd']
 
 from time import time
 from math import ceil
@@ -107,6 +107,129 @@ async def top(ctx, period=None):
 	await ctx.reply(embed=embed)
 
 
+
+STEAMID64_RE = __import__('re').compile(r"(7656119\d{10})")
+VANITY_RE = __import__('re').compile(r"steamcommunity\.com/id/([A-Za-z0-9_-]+)")
+STEAM_API_KEY = ""  # https://steamcommunity.com/dev/apikey ; empty = vanity resolution disabled
+
+
+async def _resolve_vanity(name):
+	""" Resolve a Steam vanity name to a SteamID64 via the Steam Web API. Returns None on any failure. """
+	if not STEAM_API_KEY:
+		return None
+	try:
+		import aiohttp
+		url = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/"
+		async with aiohttp.ClientSession() as s:
+			async with s.get(url, params=dict(key=STEAM_API_KEY, vanityurl=name), timeout=aiohttp.ClientTimeout(total=5)) as r:
+				data = await r.json()
+		resp = data.get("response", {})
+		return resp.get("steamid") if resp.get("success") == 1 else None
+	except Exception:
+		return None
+
+
+def _extract_steamid64(text):
+	""" Accepts a raw SteamID64 or a steamcommunity.com/profiles/ URL. """
+	if not text:
+		return None
+	m = STEAMID64_RE.search(text)
+	return m.group(1) if m else None
+
+
+async def linksteam(ctx, args: str = None):
+	if not args:
+		link = await db.select_one(['steamid'], "steam_links", where=dict(user_id=ctx.author.id))
+		if link:
+			await ctx.reply(f"Your linked SteamID64: `{link['steamid']}`")
+		else:
+			await ctx.reply(
+				"No Steam account linked. Use `!linksteam <SteamID64 or profile URL>`.\n"
+				"Find yours at <https://steamcommunity.com/my/> -> the number in the URL, "
+				"or <https://steamid.io/>."
+			)
+		return
+
+	steamid = _extract_steamid64(args)
+	if not steamid:
+		m = VANITY_RE.search(args)
+		vanity = m.group(1) if m else args.strip().strip("/").split("/")[-1]
+		if vanity and __import__('re').fullmatch(r"[A-Za-z0-9_-]{2,32}", vanity):
+			steamid = await _resolve_vanity(vanity)
+	if not steamid:
+		raise bot.Exc.SyntaxError(
+			"Could not resolve that to a SteamID64. Paste the 17-digit ID (starts with 7656119), "
+			"your steamcommunity.com/profiles/... URL, or your custom /id/ URL."
+		)
+
+	taken = await db.select_one(['user_id'], "steam_links", where=dict(steamid=steamid))
+	if taken and taken['user_id'] != ctx.author.id:
+		raise bot.Exc.PermissionError(
+			"That Steam account is already linked to another Discord user. "
+			"If this is an error, contact an admin."
+		)
+
+	await db.execute(
+		"INSERT INTO steam_links (user_id, steamid) VALUES (%s, %s) "
+		"ON DUPLICATE KEY UPDATE steamid = VALUES(steamid)",
+		(ctx.author.id, steamid)
+	)
+	await ctx.success(f"Linked to SteamID64 `{steamid}`. Your in-game stats will now appear on !rank.")
+
+
+
+async def kd(ctx):
+	""" Personal combat stats readout (self-only). """
+	link = await db.select_one(['steamid'], "steam_links", where=dict(user_id=ctx.author.id))
+	if not link:
+		await ctx.reply("No Steam account linked. Use `/linksteam` first.")
+		return
+	row = await db.fetchone(
+		"SELECT COUNT(*) rounds, COALESCE(SUM(kills),0) k, COALESCE(SUM(deaths),0) d, "
+		"COALESCE(SUM(assists),0) a, COALESCE(SUM(headshots),0) hs, "
+		"COALESCE(SUM(obj_captured),0) obj, COALESCE(SUM(score),0) sc "
+		"FROM spl_round_stats WHERE steamid=%s AND team IN (0,1)",
+		(link['steamid'],)
+	)
+	if not row or not row['rounds']:
+		await ctx.reply("No in-game rounds recorded yet.")
+		return
+	ratio = round(row['k'] / max(row['d'], 1), 2)
+	await ctx.reply(
+		f"**Combat stats** ({row['rounds']} rounds)\n"
+		f"K/D/A **{row['k']}** / **{row['d']}** / **{row['a']}** ({ratio})\n"
+		f"Headshots **{row['hs']}** \u200b|\u200b Objectives **{row['obj']}** "
+		f"\u200b|\u200b Score **{row['sc']:,}**"
+	)
+
+
+async def _spl_stats_field(embed, user_id):
+	""" Append in-game stats to a rank embed. Silent no-op on any failure. """
+	try:
+		link = await db.select_one(['steamid'], "steam_links", where=dict(user_id=user_id))
+		if not link:
+			return
+		row = await db.fetchone(
+			"SELECT COALESCE(SUM(kills),0) k, COALESCE(SUM(deaths),0) d, "
+			"COALESCE(SUM(assists),0) a, COALESCE(SUM(headshots),0) hs, COUNT(*) rounds "
+			"FROM spl_round_stats WHERE steamid=%s AND team IN (0,1)",
+			(link['steamid'],)
+		)
+		if not row or not row['rounds']:
+			return
+		kd = round(row['k'] / max(row['d'], 1), 2)
+		embed.add_field(
+			name="In-game",
+			value=(
+				f"K/D/A **{row['k']}**/**{row['d']}**/**{row['a']}** ({kd}) \u200b|\u200b "
+				f"HS **{row['hs']}**"
+			),
+			inline=False
+		)
+	except Exception:
+		return
+
+
 async def rank(ctx, player: Member = None):
 	target = ctx.author if not player else await ctx.get_member(player)
 	if not target:
@@ -161,6 +284,7 @@ async def rank(ctx, player: Member = None):
 					change=("+" if c['rating_change'] >= 0 else "") + str(c['rating_change'])
 				) for c in changes))
 			)
+		await _spl_stats_field(embed, target.id)
 		await ctx.reply(embed=embed)
 
 	else:

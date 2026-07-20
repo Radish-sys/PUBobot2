@@ -587,6 +587,19 @@ async def _rank(
 ): await run_slash(bot.commands.rank, interaction=interaction, player=player)
 
 
+@dc.slash_command(name='linksteam', description='Link your Steam account for in-game stats.', **guild_kwargs)
+async def _linksteam(
+		interaction: Interaction,
+		steam: str = SlashOption(required=False, description='Your SteamID64 or steamcommunity.com/profiles/ URL'),
+): await run_slash(bot.commands.linksteam, interaction=interaction, args=steam)
+
+
+@dc.slash_command(name='kd', description='Show your personal combat stats.', **guild_kwargs)
+async def _kd(
+		interaction: Interaction,
+): await run_slash(bot.commands.kd, interaction=interaction)
+
+
 @dc.slash_command(name='leaderboard', description='Show rating leaderboard.', **guild_kwargs)
 async def _leaderboard(
 		interaction: Interaction,
@@ -680,4 +693,3 @@ async def _nick(
 		interaction: Interaction,
 		nick: str
 ): await run_slash(bot.commands.set_nick, interaction=interaction, nick=nick)
-
