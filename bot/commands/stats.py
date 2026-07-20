@@ -112,7 +112,6 @@ STEAMID64_RE = __import__('re').compile(r"(7656119\d{10})")
 VANITY_RE = __import__('re').compile(r"steamcommunity\.com/id/([A-Za-z0-9_-]+)")
 STEAM_API_KEY = ""  # https://steamcommunity.com/dev/apikey ; empty = vanity resolution disabled
 
-
 async def _resolve_vanity(name):
 	""" Resolve a Steam vanity name to a SteamID64 via the Steam Web API. Returns None on any failure. """
 	if not STEAM_API_KEY:
@@ -195,12 +194,17 @@ async def kd(ctx):
 		await ctx.reply("No in-game rounds recorded yet.")
 		return
 	ratio = round(row['k'] / max(row['d'], 1), 2)
-	await ctx.reply(
-		f"**Combat stats** ({row['rounds']} rounds)\n"
-		f"K/D/A **{row['k']}** / **{row['d']}** / **{row['a']}** ({ratio})\n"
-		f"Headshots **{row['hs']}** \u200b|\u200b Objectives **{row['obj']}** "
-		f"\u200b|\u200b Score **{row['sc']:,}**"
-	)
+	hs_pct = round(100 * row['hs'] / max(row['k'], 1))
+	embed = Embed(title=f"__{get_nick(ctx.author)}__ — combat stats", colour=Colour(0xE67E22))
+	embed.add_field(name="Rounds", value=str(row['rounds']))
+	embed.add_field(name="K / D / A", value=f"{row['k']} / {row['d']} / {row['a']}")
+	embed.add_field(name="K/D", value=str(ratio))
+	embed.add_field(name="Headshots", value=f"{row['hs']} ({hs_pct}%)")
+	embed.add_field(name="Objectives", value=str(row['obj']))
+	embed.add_field(name="Score", value=f"{row['sc']:,}")
+	if hasattr(ctx.author, 'display_avatar'):
+		embed.set_thumbnail(url=ctx.author.display_avatar.url)
+	await ctx.reply(embed=embed)
 
 
 async def _spl_stats_field(embed, user_id):
