@@ -177,11 +177,17 @@ async def linksteam(ctx, args: str = None):
 
 
 
-async def kd(ctx):
-	""" Personal combat stats readout (self-only). """
-	link = await db.select_one(['steamid'], "steam_links", where=dict(user_id=ctx.author.id))
+async def kd(ctx, player: Member = None):
+	""" Combat stats readout for yourself or another player. """
+	target = ctx.author if not player else await ctx.get_member(player)
+	if target is None:
+		raise bot.Exc.NotFoundError("Specified user not found.")
+	link = await db.select_one(['steamid'], "steam_links", where=dict(user_id=target.id))
 	if not link:
-		await ctx.reply("No Steam account linked. Use `/linksteam` first.")
+		if target.id == ctx.author.id:
+			await ctx.reply("No Steam account linked. Use `/linksteam` first.")
+		else:
+			await ctx.reply(f"{get_nick(target)} has no Steam account linked.")
 		return
 	row = await db.fetchone(
 		"SELECT COUNT(*) rounds, COALESCE(SUM(kills),0) k, COALESCE(SUM(deaths),0) d, "
@@ -195,43 +201,16 @@ async def kd(ctx):
 		return
 	ratio = round(row['k'] / max(row['d'], 1), 2)
 	hs_pct = round(100 * row['hs'] / max(row['k'], 1))
-	embed = Embed(title=f"__{get_nick(ctx.author)}__ — combat stats", colour=Colour(0xE67E22))
+	embed = Embed(title=f"__{get_nick(target)}__ — combat stats", colour=Colour(0xE67E22))
 	embed.add_field(name="Rounds", value=str(row['rounds']))
 	embed.add_field(name="K / D / A", value=f"{row['k']} / {row['d']} / {row['a']}")
 	embed.add_field(name="K/D", value=str(ratio))
 	embed.add_field(name="Headshots", value=f"{row['hs']} ({hs_pct}%)")
 	embed.add_field(name="Objectives", value=str(row['obj']))
 	embed.add_field(name="Score", value=f"{row['sc']:,}")
-	if hasattr(ctx.author, 'display_avatar'):
-		embed.set_thumbnail(url=ctx.author.display_avatar.url)
+	if hasattr(target, 'display_avatar'):
+		embed.set_thumbnail(url=target.display_avatar.url)
 	await ctx.reply(embed=embed)
-
-
-async def _spl_stats_field(embed, user_id):
-	""" Append in-game stats to a rank embed. Silent no-op on any failure. """
-	try:
-		link = await db.select_one(['steamid'], "steam_links", where=dict(user_id=user_id))
-		if not link:
-			return
-		row = await db.fetchone(
-			"SELECT COALESCE(SUM(kills),0) k, COALESCE(SUM(deaths),0) d, "
-			"COALESCE(SUM(assists),0) a, COALESCE(SUM(headshots),0) hs, COUNT(*) rounds "
-			"FROM spl_round_stats WHERE steamid=%s AND team IN (0,1)",
-			(link['steamid'],)
-		)
-		if not row or not row['rounds']:
-			return
-		kd = round(row['k'] / max(row['d'], 1), 2)
-		embed.add_field(
-			name="In-game",
-			value=(
-				f"K/D/A **{row['k']}**/**{row['d']}**/**{row['a']}** ({kd}) \u200b|\u200b "
-				f"HS **{row['hs']}**"
-			),
-			inline=False
-		)
-	except Exception:
-		return
 
 
 async def rank(ctx, player: Member = None):
@@ -288,7 +267,6 @@ async def rank(ctx, player: Member = None):
 					change=("+" if c['rating_change'] >= 0 else "") + str(c['rating_change'])
 				) for c in changes))
 			)
-		await _spl_stats_field(embed, target.id)
 		await ctx.reply(embed=embed)
 
 	else:

@@ -594,10 +594,11 @@ async def _linksteam(
 ): await run_slash(bot.commands.linksteam, interaction=interaction, args=steam)
 
 
-@dc.slash_command(name='kd', description='Show your personal combat stats.', **guild_kwargs)
+@dc.slash_command(name='kd', description='Show combat stats.', **guild_kwargs)
 async def _kd(
 		interaction: Interaction,
-): await run_slash(bot.commands.kd, interaction=interaction)
+		player: Member = SlashOption(required=False, verify=False),
+): await run_slash(bot.commands.kd, interaction=interaction, player=player)
 
 
 @dc.slash_command(name='leaderboard', description='Show rating leaderboard.', **guild_kwargs)

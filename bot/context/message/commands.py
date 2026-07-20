@@ -215,7 +215,11 @@ async def _linksteam(ctx: MessageContext, args: str = None):
 
 @message_command('kd')
 async def _kd(ctx: MessageContext, args: str = None):
-	await bot.commands.kd(ctx)
+	if not args:
+		await bot.commands.kd(ctx, player=None)
+		return
+	member = await ctx.get_member(args)
+	await bot.commands.kd(ctx, player=member)
 
 
 @message_command('leaderboard', 'lb')
